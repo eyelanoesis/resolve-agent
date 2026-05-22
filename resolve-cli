@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""
+resolve-cli — line-delimited JSON-RPC client for color_agent_server.
+
+v1 — 2026-05-21
+
+Usage:
+    resolve-cli <verb> [key=value ...] [--json '{...}']
+
+Examples:
+    resolve-cli system.ping
+    resolve-cli color.context
+    resolve-cli color.list_nodes
+    resolve-cli color.set_lut node=1 path=/path/to/foo.cube
+    resolve-cli color.set_cdl node=1 slope=[0.5,0.4,0.2] sat=0.65
+    resolve-cli color.copy_grades --json '{"to_clip_ids":["uid1","uid2"]}'
+
+Environment:
+    RESOLVE_AGENT_HOST  (default loopback)
+    RESOLVE_AGENT_PORT  (default 7878)
+    RESOLVE_AGENT_TIMEOUT  (default 30, seconds)
+"""
+
+import json
+import os
+import socket
+import sys
+import uuid
+
+DEFAULT_HOST = ".".join(("127", "0", "0", "1"))
+DEFAULT_PORT = 7878
+
+
+def coerce(v):
+    """Best-effort coerce a CLI string into json-native scalar/list/dict/bool."""
+    if v.lower() in ("true", "false"):
+        return v.lower() == "true"
+    if v.lower() in ("null", "none"):
+        return None
+    try:
+        return int(v)
+    except ValueError:
+        pass
+    try:
+        return float(v)
+    except ValueError:
+        pass
+    if v and v[0] in "{[":
+        try:
+            return json.loads(v)
+        except Exception:
+            pass
+    return v
+
+
+def parse_args(argv):
+    if len(argv) < 2:
+        print(__doc__.strip())
+        sys.exit(2)
+    verb = argv[1]
+    args = {}
+    i = 2
+    while i < len(argv):
+        tok = argv[i]
+        if tok == "--json":
+            i += 1
+            if i >= len(argv):
+                print("--json requires a value", file=sys.stderr)
+                sys.exit(2)
+            blob = json.loads(argv[i])
+            if not isinstance(blob, dict):
+                print("--json value must be an object", file=sys.stderr)
+                sys.exit(2)
+            args.update(blob)
+        elif "=" in tok:
+            k, v = tok.split("=", 1)
+            args[k] = coerce(v)
+        else:
+            print(f"bad arg (need key=value or --json): {tok}", file=sys.stderr)
+            sys.exit(2)
+        i += 1
+    return verb, args
+
+
+def send(verb, args, host, port, timeout):
+    req = {"id": str(uuid.uuid4()), "verb": verb, "args": args}
+    s = socket.create_connection((host, port), timeout=timeout)
+    s.settimeout(timeout)
+    try:
+        f = s.makefile("rwb", buffering=0)
+        f.write((json.dumps(req) + "\n").encode("utf-8"))
+        line = f.readline()
+        if not line:
+            raise RuntimeError("server closed connection with no response")
+        return json.loads(line)
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
+
+
+def main():
+    verb, args = parse_args(sys.argv)
+    host = os.environ.get("RESOLVE_AGENT_HOST", DEFAULT_HOST)
+    port = int(os.environ.get("RESOLVE_AGENT_PORT", DEFAULT_PORT))
+    timeout = float(os.environ.get("RESOLVE_AGENT_TIMEOUT", "30"))
+    try:
+        resp = send(verb, args, host, port, timeout)
+    except (ConnectionRefusedError, socket.timeout) as e:
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": f"could not reach color_agent_server at "
+                    f"{host}:{port} — {type(e).__name__}: {e}",
+                    "hint": "Launch it from Resolve: Workspace > Scripts > "
+                    "Utility > color_agent_server",
+                },
+                indent=2,
+            )
+        )
+        sys.exit(3)
+    print(json.dumps(resp, indent=2))
+    sys.exit(0 if resp.get("ok") else 1)
+
+
+if __name__ == "__main__":
+    main()

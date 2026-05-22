@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# test-e2e — drive the in-Resolve test_e2e_list_nodes script and report.
+#
+# v1 — 2026-05-21
+#
+# Requirements:
+#   - DaVinci Resolve running
+#   - color_agent_server already launched in Resolve (Workspace > Scripts
+#     > Utility > color_agent_server)
+#   - This shell has Accessibility permission so osascript can drive
+#     Resolve's menu (System Settings > Privacy & Security > Accessibility)
+#
+# Behavior:
+#   1. Truncate /tmp/test_e2e_list_nodes.log
+#   2. Click Workspace > Scripts > test_e2e_list_nodes via System Events
+#   3. Poll the log until "===== test end =====" appears (or timeout)
+#   4. Print the log and exit 0 on PASS, 1 on FAIL
+
+LOG=/tmp/test_e2e_list_nodes.log
+TIMEOUT_SEC=${TIMEOUT_SEC:-90}
+
+echo "=== truncating $LOG ==="
+: > "$LOG"
+
+echo "=== clicking Workspace > Scripts > test_e2e_list_nodes ==="
+osascript <<'AS'
+tell application "DaVinci Resolve" to activate
+delay 1
+tell application "System Events"
+    tell process "DaVinci Resolve"
+        click menu item "test_e2e_list_nodes" of menu "Scripts" of menu item "Scripts" of menu "Workspace" of menu bar item "Workspace" of menu bar 1
+    end tell
+end tell
+AS
+osascript_rc=$?
+if [ $osascript_rc -ne 0 ]; then
+    echo "osascript click failed (rc=$osascript_rc)"
+    exit 2
+fi
+
+echo "=== polling $LOG (timeout ${TIMEOUT_SEC}s) ==="
+end_marker="===== test end ====="
+deadline=$(( $(date +%s) + TIMEOUT_SEC ))
+while [ $(date +%s) -lt $deadline ]; do
+    if grep -q "$end_marker" "$LOG" 2>/dev/null; then
+        break
+    fi
+    sleep 1
+done
+
+echo "=== full log ==="
+cat "$LOG"
+
+if grep -q "RESULT: PASS" "$LOG" 2>/dev/null; then
+    echo
+    echo "[test-e2e] PASS"
+    exit 0
+elif grep -q "RESULT: FAIL" "$LOG" 2>/dev/null; then
+    echo
+    echo "[test-e2e] FAIL"
+    exit 1
+else
+    echo
+    echo "[test-e2e] TIMEOUT — no PASS/FAIL marker after ${TIMEOUT_SEC}s"
+    exit 3
+fi
