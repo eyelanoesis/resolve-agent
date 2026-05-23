@@ -265,6 +265,48 @@ def color_export_lut(path: str, export_type: int = 1) -> dict:
     )
 
 
+# ---------- L2.5: multi-clip ops ------------------------------------------
+
+@mcp.tool()
+def color_list_clips(
+    track_type: str = "video", track_index: Optional[int] = None
+) -> dict:
+    """List clips on the current timeline (uid, name, track info).
+
+    track_type: 'video' (default), 'audio', or 'subtitle'.
+    track_index: 1-based; omit to walk all tracks of track_type.
+    """
+    args: dict[str, Any] = {"track_type": track_type}
+    if track_index is not None:
+        args["track_index"] = track_index
+    return _call("color.list_clips", args)
+
+
+@mcp.tool()
+def color_set_lut_many(
+    clip_uids: list[str], path: str, node: int = 1
+) -> dict:
+    """Apply a LUT to node N of multiple clips identified by uid."""
+    return _call(
+        "color.set_lut_many",
+        {"clip_uids": clip_uids, "path": path, "node": node},
+    )
+
+
+@mcp.tool()
+def color_set_lut_timeline(
+    path: str, node: int = 1, track_index: Optional[int] = None
+) -> dict:
+    """Apply a LUT to node N of every clip on a video track.
+
+    track_index: 1-based; omit to apply across all video tracks.
+    """
+    args: dict[str, Any] = {"path": path, "node": node}
+    if track_index is not None:
+        args["track_index"] = track_index
+    return _call("color.set_lut_timeline", args)
+
+
 # ---------- previews / gallery --------------------------------------------
 
 @mcp.tool()

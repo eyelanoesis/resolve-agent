@@ -236,6 +236,9 @@ Same env overrides as `resolve-cli`: `RESOLVE_AGENT_HOST`,
 | `color.add_version`      | `name`, `type?` (0=local, 1=remote)                             | `TimelineItem.AddVersion`          |
 | `color.load_version`     | `name`, `type?`                                                 | `TimelineItem.LoadVersionByName`   |
 | `color.copy_grades`      | `to_clip_ids[]`, `from_clip_id?`                                | `TimelineItem.CopyGrades`          |
+| `color.list_clips`       | `track_type?`, `track_index?`                                   | `Timeline.GetItemListInTrack` walk |
+| `color.set_lut_many`     | `clip_uids[]`, `path`, `node?`                                  | per-clip `Graph.SetLUT`            |
+| `color.set_lut_timeline` | `path`, `node?`, `track_index?`                                 | per-clip `Graph.SetLUT` across track|
 | `color.apply_drx`        | `path`, `mode?`                                                 | `Graph.ApplyGradeFromDRX`          |
 | `color.assign_group`     | `group_name`, `create_if_missing?`                              | `TimelineItem.AssignToColorGroup`  |
 | `color.export_lut`       | `path`, `export_type?`                                          | `TimelineItem.ExportLUT`           |

@@ -78,16 +78,33 @@ _resolve_singleton = None
 
 
 def get_resolve():
-    """scriptapp() is cheap and idempotent; cache the Resolve object only."""
+    """Return a live Resolve handle, validating and refreshing the cache.
+
+    Validation: call GetProductName() — if it returns None or raises,
+    the cache is stale (Resolve quit/crashed or the Mach port died).
+    Drop the cache and try scriptapp() again. If that also fails,
+    raise a clean RuntimeError pointing the user at the restart path.
+    """
     global _resolve_singleton
-    if _resolve_singleton is None:
-        _resolve_singleton = dvr_script.scriptapp("Resolve")
-        if _resolve_singleton is None:
-            raise RuntimeError(
-                "DaVinciResolveScript.scriptapp('Resolve') returned None "
-                "(is Resolve running and was this script launched from inside "
-                "Resolve's Scripts menu?)"
-            )
+
+    if _resolve_singleton is not None:
+        try:
+            if _resolve_singleton.GetProductName() is not None:
+                return _resolve_singleton
+        except Exception:
+            pass
+        _resolve_singleton = None  # stale; fall through to re-fetch
+
+    _resolve_singleton = dvr_script.scriptapp("Resolve")
+    if _resolve_singleton is None or _resolve_singleton.GetProductName() is None:
+        _resolve_singleton = None
+        raise RuntimeError(
+            "Cannot reach DaVinci Resolve. Either Resolve is not running, "
+            "or this fuscript subprocess has been orphaned from a quit/crashed "
+            "Resolve. Fix: relaunch Resolve and restart the server via "
+            "Workspace > Scripts > color_agent_server "
+            "(killing any orphan fuscript holding port 7878 first)."
+        )
     return _resolve_singleton
 
 
@@ -467,6 +484,143 @@ def v_export_lut(args):
     with clip_lock(item.GetUniqueId()):
         ok = item.ExportLUT(export_type, path)
     return {"exported": bool(ok), "path": path, "export_type": export_type}
+
+
+# ---------- L2.5: multi-clip ops ------------------------------------------
+
+
+@verb("color.list_clips")
+def v_list_clips(args):
+    """List clips on the current timeline.
+
+    args:
+      track_type:  'video' (default) or 'audio' or 'subtitle'
+      track_index: 1-based; omit to walk all tracks of track_type
+    """
+    track_type = args.get("track_type", "video")
+    track_index = args.get("track_index")
+    c = ctx()
+    timeline = require_timeline(c)
+
+    if track_index is not None:
+        tracks = [int(track_index)]
+    else:
+        tracks = list(range(1, timeline.GetTrackCount(track_type) + 1))
+
+    clips = []
+    for ti in tracks:
+        for item in timeline.GetItemListInTrack(track_type, ti) or []:
+            try:
+                clips.append(
+                    {
+                        "uid": item.GetUniqueId(),
+                        "name": item.GetName(),
+                        "track_type": track_type,
+                        "track_index": ti,
+                    }
+                )
+            except Exception as e:
+                clips.append(
+                    {"error": f"{type(e).__name__}: {e}", "track_index": ti}
+                )
+    return {"count": len(clips), "track_type": track_type, "clips": clips}
+
+
+@verb("color.set_lut_many")
+def v_set_lut_many(args):
+    """Apply a LUT to node N of multiple clips identified by uid.
+
+    args:
+      clip_uids: list of TimelineItem uids
+      node:      1-based node index (default 1)
+      path:      LUT path (absolute, or relative to a known LUT root)
+    """
+    clip_uids = set(args["clip_uids"])
+    node = int(args.get("node", 1))
+    path = args["path"]
+    c = ctx()
+    timeline = require_timeline(c)
+
+    results = []
+    found_uids = set()
+    for ti in range(1, timeline.GetTrackCount("video") + 1):
+        for item in timeline.GetItemListInTrack("video", ti) or []:
+            try:
+                uid = item.GetUniqueId()
+            except Exception:
+                continue
+            if uid not in clip_uids:
+                continue
+            found_uids.add(uid)
+            with clip_lock(uid):
+                ok = item.GetNodeGraph().SetLUT(node, path)
+            results.append(
+                {
+                    "uid": uid,
+                    "name": item.GetName(),
+                    "track_index": ti,
+                    "set": bool(ok),
+                }
+            )
+
+    missing = sorted(clip_uids - found_uids)
+    return {
+        "applied": len(results),
+        "succeeded": sum(1 for r in results if r["set"]),
+        "failed": sum(1 for r in results if not r["set"]),
+        "missing_uids": missing,
+        "node": node,
+        "path": path,
+        "results": results,
+    }
+
+
+@verb("color.set_lut_timeline")
+def v_set_lut_timeline(args):
+    """Convenience: apply a LUT to node N of every clip on a video track.
+
+    args:
+      path:        LUT path (required)
+      node:        1-based node index (default 1)
+      track_index: 1-based; omit to apply across all video tracks
+    """
+    path = args["path"]
+    node = int(args.get("node", 1))
+    track_index = args.get("track_index")
+    c = ctx()
+    timeline = require_timeline(c)
+
+    if track_index is not None:
+        tracks = [int(track_index)]
+    else:
+        tracks = list(range(1, timeline.GetTrackCount("video") + 1))
+
+    results = []
+    for ti in tracks:
+        for item in timeline.GetItemListInTrack("video", ti) or []:
+            try:
+                uid = item.GetUniqueId()
+            except Exception:
+                continue
+            with clip_lock(uid):
+                ok = item.GetNodeGraph().SetLUT(node, path)
+            results.append(
+                {
+                    "uid": uid,
+                    "name": item.GetName(),
+                    "track_index": ti,
+                    "set": bool(ok),
+                }
+            )
+    return {
+        "applied": len(results),
+        "succeeded": sum(1 for r in results if r["set"]),
+        "failed": sum(1 for r in results if not r["set"]),
+        "tracks": tracks,
+        "node": node,
+        "path": path,
+        "results": results,
+    }
 
 
 # ---------- L1.5: previews / gallery --------------------------------------
