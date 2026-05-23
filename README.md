@@ -222,6 +222,8 @@ Same env overrides as `resolve-cli`: `RESOLVE_AGENT_HOST`,
 | Verb                     | Args                                                            | Backed by                          |
 |--------------------------|-----------------------------------------------------------------|------------------------------------|
 | `system.ping`            | -                                                               | sanity, product+version, verb list |
+| `system.get_setting`     | `scope?` (project\|timeline), `key?`                            | `Project.GetSetting` / `Timeline.GetSetting` |
+| `system.set_setting`     | `key`, `value`, `scope?` (project\|timeline)                    | `Project.SetSetting` / `Timeline.SetSetting` |
 | `color.context`          | -                                                               | page, project, timeline, clip      |
 | `color.list_nodes`       | -                                                               | `Graph.GetNumNodes` + per-node info|
 | `color.set_lut`          | `node`, `path`                                                  | `Graph.SetLUT`                     |

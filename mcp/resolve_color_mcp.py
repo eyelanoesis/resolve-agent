@@ -4,7 +4,7 @@ resolve_color_mcp.py - MCP shim for the in-Resolve color_agent_server.
 
 v1 - 2026-05-22
 
-Exposes the 18-verb catalog (see ../README.md "Verb catalog (v1)") as
+Exposes the verb catalog (see ../README.md "Verb catalog (v1)") as
 MCP tools. Each tool opens a TCP connection to color_agent_server
 (loopback:7878 by default), sends a JSON-RPC request, and returns the
 `data` field. Server errors are surfaced as Python exceptions so the
@@ -84,6 +84,35 @@ def _call(verb: str, args: dict[str, Any]) -> Any:
 def system_ping() -> dict:
     """Sanity check. Returns product, version, current page, and verbs."""
     return _call("system.ping", {})
+
+
+@mcp.tool()
+def system_get_setting(
+    scope: str = "project", key: Optional[str] = None
+) -> dict:
+    """Get a project or timeline setting.
+
+    scope: 'project' (default) or 'timeline'.
+    key: setting name; omit for the full dict of all keys.
+    """
+    args: dict[str, Any] = {"scope": scope}
+    if key:
+        args["key"] = key
+    return _call("system.get_setting", args)
+
+
+@mcp.tool()
+def system_set_setting(
+    key: str, value: Any, scope: str = "project"
+) -> dict:
+    """Set a project or timeline setting.
+
+    key: setting name. value: new value (string in Resolve).
+    scope: 'project' (default) or 'timeline'.
+    """
+    return _call(
+        "system.set_setting", {"key": key, "value": value, "scope": scope}
+    )
 
 
 # ---------- context / introspection ---------------------------------------

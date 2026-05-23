@@ -175,6 +175,40 @@ def v_ping(args):
     }
 
 
+@verb("system.get_setting")
+def v_get_setting(args):
+    """Get a project or timeline setting.
+
+    args:
+      scope: 'project' (default) or 'timeline'
+      key:   optional setting name; omit for the full dict of all keys
+    """
+    scope = args.get("scope", "project")
+    key = args.get("key")
+    c = ctx()
+    obj = require_timeline(c) if scope == "timeline" else require_project(c)
+    value = obj.GetSetting(key) if key else obj.GetSetting()
+    return {"scope": scope, "key": key, "value": value}
+
+
+@verb("system.set_setting")
+def v_set_setting(args):
+    """Set a project or timeline setting.
+
+    args:
+      key:   setting name (required)
+      value: new value (coerced to str — Resolve's SetSetting expects strings)
+      scope: 'project' (default) or 'timeline'
+    """
+    key = args["key"]
+    value = str(args["value"])
+    scope = args.get("scope", "project")
+    c = ctx()
+    obj = require_timeline(c) if scope == "timeline" else require_project(c)
+    ok = obj.SetSetting(key, value)
+    return {"scope": scope, "key": key, "value": value, "set": bool(ok)}
+
+
 # ---------- context / introspection ---------------------------------------
 
 
