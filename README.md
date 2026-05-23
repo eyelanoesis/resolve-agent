@@ -184,6 +184,39 @@ Response:
 {"id":"...","ok":true,"data":{"set":true,"node":1,"path":"...","readback":"foo.cube"},"error":null}
 ```
 
+### MCP (Claude Code / Cursor / Warp)
+
+`mcp/resolve_color_mcp.py` is a FastMCP stdio shim that wraps the 18-verb
+catalog as MCP tools. Each tool opens a TCP connection to
+`color_agent_server`, sends the JSON-RPC request, and returns the `data`
+field. The in-Resolve server must still be running — the shim is just a
+protocol translator.
+
+One-time setup:
+
+```bash
+cd /Users/raa/resolve-agent
+python3 -m venv mcp/.venv
+mcp/.venv/bin/pip install -r mcp/requirements.txt
+```
+
+Register with Claude Code (user scope, available in every session):
+
+```bash
+claude mcp add --scope user resolve-color \
+  /Users/raa/resolve-agent/mcp/.venv/bin/python \
+  /Users/raa/resolve-agent/mcp/resolve_color_mcp.py
+claude mcp list   # should show `resolve-color: ... - ✓ Connected`
+```
+
+Tools surface in Claude Code as `mcp__resolve-color__<tool>` — e.g.
+`mcp__resolve-color__system_ping`, `mcp__resolve-color__color_context`,
+`mcp__resolve-color__color_set_lut`. Naming is 1:1 with the verb catalog
+below (dots replaced with underscores).
+
+Same env overrides as `resolve-cli`: `RESOLVE_AGENT_HOST`,
+`RESOLVE_AGENT_PORT`, `RESOLVE_AGENT_TIMEOUT`.
+
 ## Verb catalog (v1)
 
 | Verb                     | Args                                                            | Backed by                          |
@@ -279,10 +312,10 @@ Last successful run produced:
 - Phase 1.4 -- launch docs: **done**
 - Phase 1.5 -- concurrency smoke: **done** (3 concurrent clients cycled cleanly through accept loop)
 - Phase 1.6 -- end-to-end acceptance test: **done** (`./test-e2e` PASSes)
+- Phase 2.6 -- MCP server shim: **done** (`mcp/resolve_color_mcp.py`, registered with Claude Code as `resolve-color`)
 
 ## Next (from handoff §7)
 
-- Phase 2.6 -- MCP server shim wrapping the verb catalog.
 - Phase 2.7 -- n8n HTTP node (thin FastAPI in front of the socket).
 - Phase 3.9 -- probe `Fusion.ActionManager` / `MenuManager` to discover
   action IDs (L3 fallback, e.g. for `Add Serial Node`).
