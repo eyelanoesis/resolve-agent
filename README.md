@@ -1,8 +1,20 @@
 # resolve-agent
 
-In-Resolve JSON-RPC server + CLI clients + end-to-end test for agentic
-control of DaVinci Resolve Studio (Phase 1 of
-`resolve-agent-handoff.pdf`, 2026-05-21).
+Give AI agents hands inside **DaVinci Resolve Studio**.
+
+An in-Resolve JSON-RPC server, a CLI client, an MCP shim for Claude
+Code / Cursor / Warp, and an end-to-end acceptance test — together they
+let any agent drive Resolve's color page: set LUTs and CDLs, walk node
+graphs, copy grades across clips, manage versions and groups, export
+stills.
+
+The interesting part is *how*: macOS TCC gates Resolve's scripting
+bridge by signing identity, so arbitrary external processes can't
+reach it. The server therefore runs **inside** Resolve (launched from
+the Scripts menu), inheriting its permission context, and exposes a
+line-delimited JSON-RPC protocol on loopback that anything can speak.
+See the architecture notes below for the subprocess-model discovery
+this design rests on.
 
 ## TL;DR
 
@@ -112,8 +124,8 @@ existing `fuscript` pid that owns port 7878.
 
 ```bash
 TARGET="/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Scripts/Utility"
-cp /Users/raa/resolve-agent/color_agent_server.py    "$TARGET/"
-cp /Users/raa/resolve-agent/test_e2e_list_nodes.py   "$TARGET/"
+cp color_agent_server.py    "$TARGET/"
+cp test_e2e_list_nodes.py   "$TARGET/"
 ```
 
 Restart Resolve so it re-scans the Scripts directory (or just open
@@ -186,7 +198,7 @@ Response:
 
 ### MCP (Claude Code / Cursor / Warp)
 
-`mcp/resolve_color_mcp.py` is a FastMCP stdio shim that wraps the 18-verb
+`mcp/resolve_color_mcp.py` is a FastMCP stdio shim that wraps the 23-verb
 catalog as MCP tools. Each tool opens a TCP connection to
 `color_agent_server`, sends the JSON-RPC request, and returns the `data`
 field. The in-Resolve server must still be running — the shim is just a
@@ -195,7 +207,6 @@ protocol translator.
 One-time setup:
 
 ```bash
-cd /Users/raa/resolve-agent
 python3 -m venv mcp/.venv
 mcp/.venv/bin/pip install -r mcp/requirements.txt
 ```
@@ -204,8 +215,8 @@ Register with Claude Code (user scope, available in every session):
 
 ```bash
 claude mcp add --scope user resolve-color \
-  /Users/raa/resolve-agent/mcp/.venv/bin/python \
-  /Users/raa/resolve-agent/mcp/resolve_color_mcp.py
+  "$(pwd)/mcp/.venv/bin/python" \
+  "$(pwd)/mcp/resolve_color_mcp.py"
 claude mcp list   # should show `resolve-color: ... - ✓ Connected`
 ```
 
@@ -312,14 +323,14 @@ Last successful run produced:
 ## Status
 
 - Phase 1.1 -- server: **done**
-- Phase 1.2 -- verb catalog v1: **done** (18 verbs)
+- Phase 1.2 -- verb catalog v1: **done** (23 verbs)
 - Phase 1.3 -- CLI client: **done**
 - Phase 1.4 -- launch docs: **done**
 - Phase 1.5 -- concurrency smoke: **done** (3 concurrent clients cycled cleanly through accept loop)
 - Phase 1.6 -- end-to-end acceptance test: **done** (`./test-e2e` PASSes)
 - Phase 2.6 -- MCP server shim: **done** (`mcp/resolve_color_mcp.py`, registered with Claude Code as `resolve-color`)
 
-## Next (from handoff §7)
+## Next
 
 - Phase 2.7 -- n8n HTTP node (thin FastAPI in front of the socket).
 - Phase 3.9 -- probe `Fusion.ActionManager` / `MenuManager` to discover
